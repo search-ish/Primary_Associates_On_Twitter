@@ -1,0 +1,438 @@
+import requests
+import csv
+import sys
+import pandas as pd
+import tweepy #https://github.com/tweepy/tweepy
+import time
+import numpy
+import cv2
+
+#PASTE YOU TWITTER AUTHENTICATION CREDENTIALS BELOW
+TWITTER_C_KEY = ""
+TWITTER_C_SECRET = ""
+TWITTER_A_KEY = ""
+TWITTER_A_SECRET = ""
+
+
+#authorize twitter, initialize tweepy
+auth = tweepy.OAuthHandler(TWITTER_C_KEY, TWITTER_C_SECRET)
+auth.set_access_token(TWITTER_A_KEY, TWITTER_A_SECRET)
+api = tweepy.API(auth)
+
+
+def request_until_succeed(url):
+while True:
+try:
+res = requests.get(url, timeout=10)
+except Exception as e:
+print("ERROR: {0}".format(e))
+print("Retrying in 5s.")
+time.sleep(5)
+continue
+
+if res.status_code == 200:
+return res.text
+else:
+print("STATUS CODE {0} @ {1}\n".format(
+res.status_code,
+url,
+))
+print("Retrying in 5s.")
+time.sleep(5)
+
+def open_csv_w(filename):
+"""Open a csv file in proper mode depending on Python verion."""
+return(open(filename, mode='a') if sys.version_info[0] == 2 else
+open(filename, mode='a+', newline=''))
+
+
+
+# choose username to search
+usernames = [""]
+
+
+
+def get_friends(name):
+
+# open spreadsheet and add column heads
+with open_csv_w('%s_friendlist.csv' % name) as f:
+writer = csv.writer(f)
+writer.writerow(["id",
+"screen_name",
+"display_name",
+"bio",
+"followers_count",
+"following_count",
+"acct_created",
+"location"
+
+])
+
+
+# friends_ids returns an array of the ids of all the people the user follows
+friend_ids = api.friends_ids(screen_name = name)
+
+# cycle through every id in the array of people that the user follows and gather information for each one
+for friend_id in friend_ids:
+user = None
+while user is None:
+try:
+user = api.get_user(friend_id)
+except tweepy.error.RateLimitError:
+pass
+
+# write  csv
+with open_csv_w('%s_friendlist.csv' % name) as f:
+writer = csv.writer(f)
+writer.writerow([friend_id,
+user.screen_name,
+user.name,
+user.description,
+user.followers_count,
+user.friends_count,
+user.created_at,
+user.location
+])
+#print(user.screen_name)
+
+
+
+def get_followers(name):
+
+# open spreadsheet and add column heads
+with open_csv_w('%s_followerlist.csv' % name) as f:
+writer = csv.writer(f)
+writer.writerow(["id",
+"screen_name",
+"display_name",
+"bio",
+"followers_count",
+"following_count",
+"acct_created",
+"location"
+
+])
+
+
+# friends_ids returns an array of the ids of all the people the user follows
+follower_ids = api.followers_ids(screen_name = name)
+
+# cycle through every id in the array of people that the user follows and gather information for each one
+for follower_id in follower_ids:
+user = None
+while user is None:
+try:
+user = api.get_user(follower_id)
+except tweepy.error.RateLimitError:
+print("sleeping for a minute")
+time.sleep(60)
+
+# write the csv
+with open_csv_w('%s_followerlist.csv' % name) as f:
+writer = csv.writer(f)
+writer.writerow([follower_id,
+user.screen_name,
+user.name,
+user.description,
+user.followers_count,
+user.friends_count,
+user.created_at,
+user.location
+])
+#print(user.screen_name)
+
+
+
+
+def get_all_tweets(screen_name):
+#Twitter only allows access to a users most recent 3240 tweets with this method
+
+#authorize twitter, initialize tweepy
+auth = tweepy.OAuthHandler(TWITTER_C_KEY, TWITTER_C_SECRET)
+auth.set_access_token(TWITTER_A_KEY, TWITTER_A_SECRET)
+api = tweepy.API(auth)
+
+#initialize a list to hold all the tweepy Tweets
+alltweets = []
+
+#make initial request for most recent tweets (200 is the maximum allowed count)
+new_tweets = api.user_timeline(screen_name = screen_name,count=200)
+
+#save most recent tweets
+alltweets.extend(new_tweets)
+
+#save the id of the oldest tweet less one
+oldest = alltweets[-1].id - 1
+
+#keep grabbing tweets until there are no tweets left to grab
+while len(new_tweets) > 0 and len(alltweets) < 1000:
+
+print("getting tweets before %s" % (oldest))
+
+#all subsiquent requests use the max_id param to prevent duplicates
+new_tweets = api.user_timeline(screen_name = screen_name,count=200,max_id=oldest)
+
+#save most recent tweets
+alltweets.extend(new_tweets)
+
+#update the id of the oldest tweet less one
+oldest = alltweets[-1].id - 1
+
+print("...%s tweets downloaded so far" % (len(alltweets)))
+
+
+#transform the tweepy tweets into a 2D array that will populate the csv | you can comment out data you don't need
+outtweets = [[tweet.id_str,
+tweet.created_at,
+tweet.favorite_count,
+tweet.retweet_count,
+tweet.retweeted,
+tweet.source,
+tweet.text,
+tweet.geo,
+tweet.lang,
+tweet.is_quote_status,
+tweet.user.name,
+tweet.user.screen_name,
+tweet.user.location,
+tweet.user.description,
+tweet.user.protected,
+tweet.user.followers_count,
+tweet.user.friends_count,
+tweet.user.listed_count,
+tweet.user.created_at,
+tweet.user.favourites_count,
+tweet.user.utc_offset,
+tweet.user.time_zone,
+tweet.user.geo_enabled,
+tweet.user.verified,
+tweet.user.statuses_count,
+tweet.user.lang,
+]
+
+for tweet in alltweets]
+
+
+#write the csv
+with open_csv_w('%s_tweets.csv' % screen_name) as f:
+writer = csv.writer(f)
+writer.writerow(["id",
+"created_at",
+"favorites",
+"retweets",
+"retweeted",
+"source",
+"text",
+"geolocation",
+"language",
+"is_quote_status",
+"username",
+"user_screen_name",
+"user_location",
+"user_description",
+"user_protected",
+"user_followers_count",
+"user_friends_count",
+"user_listed_count",
+"user_created_at",
+"user_favourites_count",
+"user_utc_offset",
+"user_time_zone",
+"user_geo_enabled",
+"user_verified",
+"user_statuses_count",
+"user_lang"])
+writer.writerows(outtweets)
+
+pass
+
+
+
+
+for name in usernames:
+screen_name = name
+get_all_tweets(screen_name)
+
+# for each username run the function
+for name in usernames:
+get_followers(name)
+
+# for each username run the function
+for name in usernames:
+get_friends(name)
+
+
+
+for name in usernames:
+screen_name = name
+rows = []
+with open('%s_tweets.csv' % screen_name, 'r') as csvfile:
+for row in csvfile:
+t = (row.split(' '))
+for i in t:
+rows.append(i)
+
+
+[s.strip('@') for s in rows]
+rows = [s.replace('@', '') for s in rows]
+
+[s.strip(':') for s in rows]
+rows = [s.replace(':', '') for s in rows]
+
+followerlist = pd.read_csv("%s_followerlist.csv" % screen_name)
+friendlist = pd.read_csv("%s_friendlist.csv" % screen_name)
+tweets = pd.read_csv("%s_tweets.csv" % screen_name)
+
+#does anyone follow each other - in this case no
+#for name in friendlist["screen_name"]:
+# if name in followerlist["screen_name"]:
+#print(name)
+
+#SEARCH FOR PEOPLE IN FRIENDLIST AND TWEETS, ADD NAMES AND THEIR COUNTS TO LISTS
+namealone = []
+numberalone = []
+contacts = []
+for friendname in friendlist["screen_name"]:
+if friendname in rows:
+#print(friendname)
+if friendname not in contacts:
+contacts.append((friendname, rows.count(friendname)))
+if friendname not in namealone:
+namealone.append(friendname)
+numberalone.append(rows.count(friendname))
+#SEARCH FOR PEOPLE IN FOLLOWERLIST AND TWEETS, ADD NAMES AND THEIR COUNTS TO LISTS
+for followername in followerlist["screen_name"]:
+if followername in rows:
+#print(followername)
+if followername not in contacts:
+contacts.append((followername, rows.count(followername)))
+if followername not in namealone:
+namealone.append(followername)
+numberalone.append(rows.count(followername))
+
+#CREATE DF WITH DATA FROM LISTS
+data = {'count': numberalone,
+'usernames': namealone,}
+df = pd.DataFrame (data, columns = ['count','usernames'])
+df = df.sort_values(by="count", ascending=False)
+#print(df)
+
+#TAKE TOP FIVE NAMES AND SEARCH FOR THEIR BIOS
+x = df.iloc[0:5,1].values.tolist() #"0:4," means first four rows, and ",1" means second column
+# array of user names, replace them with your own choices
+from selenium import webdriver
+from time import sleep
+
+driver = webdriver.Chrome()
+for y in x:
+social = y
+z = ('https://twitter.com/%s' % social)
+driver.get(z)
+sleep(1)
+driver.get_screenshot_as_file('screenshot%s.png' % social)
+driver.quit()
+
+im_list = []
+from PIL import Image
+for y in x:
+social = y
+im = ('screenshot%s.png' % social)
+im_list.append(im)
+
+im1 = cv2.imread(im_list[0])
+im2 = cv2.imread(im_list[1])
+im3 = cv2.imread(im_list[2])
+im4 = cv2.imread(im_list[3])
+im5 = cv2.imread(im_list[4])
+
+
+
+verticalAppendedImg = numpy.vstack((im1,im2,im3,im4,im5))
+
+cv2.imwrite('concatenatedscreenshots.png', verticalAppendedImg)
+
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+from PIL import Image
+
+image1 = Image.open(r'concatenatedscreenshots.png')
+im1 = image1.convert('RGB')
+im1.save(r'concatenatedscreenshots.pdf')
+import os
+path = ('concatenatedscreenshots.png')
+if os.path.exists('concatenatedscreenshots.png'):
+os.remove(path)
+else:
+print("The file does not exist")
+
+
+for y in x:
+social = y
+im = ('screenshot%s.png' % social)
+path = ('screenshot%s.png' % social)
+if os.path.exists('screenshot%s.png' % social):
+os.remove(path)
+
+
+
+#driver.get_screenshot_as_file("screenshot.png")
+
+print("end...")
+users = x
+
+# open spreadsheet and add column heads
+with open_csv_w('%s_userinfo.csv' % screen_name) as f:
+writer = csv.writer(f)
+writer.writerow(["display_name",
+"bio",
+"location",
+"id",
+"screen_name",
+"acct_created",
+"language",
+])
+pass
+def get_userinfo(users):
+#set user to be the screen_name
+user = api.get_user(screen_name = users)
+# create row
+userinfo = [user.name,
+user.description,
+user.location,
+user.id,
+user.screen_name,
+user.created_at,
+user.lang,
+]
+print(userinfo)
+
+
+
+# write the csv
+with open_csv_w('%s_userinfo.csv' % screen_name) as f:
+writer = csv.writer(f)
+writer.writerows([userinfo])
+pass
+
+
+for user in users:
+get_userinfo(user)
+
+import os
+path = ('%s_friendlist.csv' % name)
+if os.path.exists('%s_friendlist.csv' % name):
+os.remove(path)
+else:
+print("The file does not exist")
+
+path = ('%s_followerlist.csv' % name)
+if os.path.exists('%s_followerlist.csv' % name):
+os.remove(path)
+else:
+print("The file does not exist")
+
+path = ('%s_tweets.csv' % screen_name)
+if os.path.exists('%s_tweets.csv' % screen_name):
+os.remove(path)
+else:
+print("The file does not exist")
